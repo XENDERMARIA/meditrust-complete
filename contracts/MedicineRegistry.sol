@@ -134,23 +134,6 @@ contract MedicineRegistry is AccessControl, ReentrancyGuard {
     }
 
     /**
-     * @dev Check if address is a channel participant
-     */
-    function isChannelParticipant(bytes32 _channelId, address _participant) 
-        public 
-        view 
-        returns (bool) 
-    {
-        address[] memory participants = channels[_channelId].participants;
-        for (uint i = 0; i < participants.length; i++) {
-            if (participants[i] == _participant) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
      * @dev Register a new medicine batch with supply chain participants
      */
     function registerBatchWithSupplyChain(
@@ -161,7 +144,7 @@ contract MedicineRegistry is AccessControl, ReentrancyGuard {
         address[] memory _participants,
         SupplyChainRole[] memory _roles,
         bytes32 _channelId
-    ) internal {
+    ) external onlyRole(MANUFACTURER_ROLE) {
         require(!batches[_batchId].exists, "Batch already exists");
         require(_expiryDate > block.timestamp, "Expiry date must be in future");
         require(_participants.length == _roles.length, "Participants and roles mismatch");
@@ -207,71 +190,17 @@ contract MedicineRegistry is AccessControl, ReentrancyGuard {
     }
 
     /**
-     * @dev Settle state channel and register batches
-     */
-    function settleChannel(
-        bytes32 _channelId,
-        bytes memory _finalState,
-        bytes memory _signature
-    ) external nonReentrant {
-        StateChannel storage channel = channels[_channelId];
-        require(channel.isOpen, "Channel not open");
-
-        // Decode the final state
-        BatchData[] memory batchDataArray = abi.decode(_finalState, (BatchData[]));
-
-        // Verify signatures
-        bytes32 stateHash = keccak256(_finalState);
-        bytes32 ethSignedHash = MessageHashUtils.toEthSignedMessageHash(stateHash);
-        address signer = ethSignedHash.recover(_signature);
-        require(isChannelParticipant(_channelId, signer), "Invalid signer");
-        require(hasRole(MANUFACTURER_ROLE, signer), "Signer not a manufacturer");
-
-        // Register all batches from the channel
-        for (uint256 i = 0; i < batchDataArray.length; i++) {
-            BatchData memory data = batchDataArray[i];
-
-            if (!batches[data.batchId].exists) {
-                registerBatchWithSupplyChain(
-                    data.batchId,
-                    data.drugName,
-                    data.ingredients,
-                    data.expiryDate,
-                    data.supplyChainAddresses,
-                    data.supplyChainRoles,
-                    _channelId
-                );
-
-                emit BatchSettled(data.batchId, _channelId);
-            }
-        }
-
-        // Close the channel
-        channel.isOpen = false;
-        channel.closedAt = block.timestamp;
-        channel.nonce++;
-
-        emit ChannelClosed(_channelId, block.timestamp);
-    }
-
-    /**
-     * @dev Supply chain participant verifies batch receipt with signature
+     * @dev Supply chain participant verifies batch receipt
      */
     function verifySupplyChainTransfer(
         string memory _batchId,
         string memory _location,
-        string memory _additionalData,
-        bytes memory _signature
+        string memory _additionalData
     ) external {
         MedicineBatch storage batch = batches[_batchId];
         require(batch.exists, "Batch not found");
         require(batch.isParticipant[msg.sender], "Not authorized participant");
         require(!batch.rewardClaimed, "Batch already completed");
-        
-        // Verify signature
-        bytes32 messageHash = keccak256(abi.encodePacked(_batchId, msg.sender, _location, _additionalData));
-        bytes32 ethSignedHash = MessageHashUtils.toEthSignedMessageHash(messageHash);
-        require(ethSignedHash.recover(_signature) == msg.sender, "Invalid signature");
         
         // Find and update participant
         for (uint256 i = 0; i < batch.supplyChainParticipants.length; i++) {
@@ -441,9 +370,7 @@ contract MedicineRegistry is AccessControl, ReentrancyGuard {
         );
     }
 
-    /**
-     * @dev Open a new state channel
-     */
+    // State channel functions
     function openChannel(bytes32 _channelId, address[] memory _participants) 
         external 
         onlyRole(CHANNEL_ROLE) 
@@ -462,9 +389,6 @@ contract MedicineRegistry is AccessControl, ReentrancyGuard {
         emit ChannelOpened(_channelId, _participants);
     }
 
-    /**
-     * @dev Close a state channel
-     */
     function closeChannel(bytes32 _channelId) 
         external 
         onlyRole(CHANNEL_ROLE) 
@@ -477,5 +401,84 @@ contract MedicineRegistry is AccessControl, ReentrancyGuard {
         emit ChannelClosed(_channelId, block.timestamp);
     }
 
-
+    function settleChannel(
+        bytes32 _channelId,
+        BatchData[] memory _batches,
+        bytes memory /* _signature */
+    ) external onlyRole(CHANNEL_ROLE) {
+        require(!channels[_channelId].isOpen, "Channel still open");
+        
+        for (uint256 i = 0; i < _batches.length; i++) {
+            if (!batches[_batches[i].batchId].exists) {
+                // Call the internal function to register batch
+                _registerBatchWithSupplyChainInternal(
+                    _batches[i].batchId,
+                    _batches[i].drugName,
+                    _batches[i].ingredients,
+                    _batches[i].expiryDate,
+                    _batches[i].supplyChainAddresses,
+                    _batches[i].supplyChainRoles,
+                    _channelId
+                );
+                
+                emit BatchSettled(_batches[i].batchId, _channelId);
+            }
+        }
+    }
+    
+    /**
+     * @dev Internal function for batch registration (used by settleChannel)
+     */
+    function _registerBatchWithSupplyChainInternal(
+        string memory _batchId,
+        string memory _drugName,
+        string memory _ingredients,
+        uint256 _expiryDate,
+        address[] memory _participants,
+        SupplyChainRole[] memory _roles,
+        bytes32 _channelId
+    ) internal {
+        require(!batches[_batchId].exists, "Batch already exists");
+        require(_expiryDate > block.timestamp, "Expiry date must be in future");
+        require(_participants.length == _roles.length, "Participants and roles mismatch");
+        require(_participants.length > 0, "At least one participant required");
+        
+        MedicineBatch storage newBatch = batches[_batchId];
+        newBatch.manufacturer = msg.sender;
+        newBatch.batchId = _batchId;
+        newBatch.drugName = _drugName;
+        newBatch.ingredients = _ingredients;
+        newBatch.expiryDate = _expiryDate;
+        newBatch.registeredAt = block.timestamp;
+        newBatch.channelId = _channelId;
+        newBatch.totalParticipants = _participants.length;
+        newBatch.verifiedCount = 0;
+        newBatch.rewardClaimed = false;
+        newBatch.exists = true;
+        
+        // Add supply chain participants
+        batchParticipantsList[_batchId] = _participants;
+        for (uint256 i = 0; i < _participants.length; i++) {
+            require(_participants[i] != address(0), "Invalid participant address");
+            require(!newBatch.isParticipant[_participants[i]], "Duplicate participant");
+            
+            SupplyChainParticipant memory participant;
+            participant.participantAddress = _participants[i];
+            participant.role = _roles[i];
+            participant.hasVerified = false;
+            participant.verifiedAt = 0;
+            
+            newBatch.supplyChainParticipants.push(participant);
+            newBatch.isParticipant[_participants[i]] = true;
+            batchParticipants[_batchId][_participants[i]] = participant;
+        }
+        
+        emit BatchRegistered(
+            _batchId,
+            msg.sender,
+            _channelId,
+            block.timestamp,
+            _participants.length
+        );
+    }
 }
