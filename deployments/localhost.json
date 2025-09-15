@@ -1,0 +1,24 @@
+{
+  "network": "localhost",
+  "chainId": 31337,
+  "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "timestamp": "2025-09-08T02:55:12.992Z",
+  "contracts": {
+    "MediToken": {
+      "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "transactionHash": "0xd1cc2ee7b06224aaeca0e6ebe4300b35526ca82eafda8856918723fd4142a5c7",
+      "blockNumber": 1
+    },
+    "MedicineRegistry": {
+      "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+      "transactionHash": "0xdb6d39b6a2e6384229fccebf352d2880043c4c40b158c66807b21c05ef73cfec",
+      "blockNumber": 2
+    }
+  },
+  "testBatch": {
+    "batchId": "TEST-localhost-1757300112837",
+    "transactionHash": "0x21f6ba811c2f82820da1a68cc204afab9510e7eff79fe88efb725f2f99218360",
+    "gasUsed": "189234"
+  },
+  "deploymentCost": "0.003211794795592877"
+}

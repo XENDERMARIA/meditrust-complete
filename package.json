@@ -1,0 +1,70 @@
+{
+  "name": "meditrust-supply-chain",
+  "version": "3.0.0",
+  "description": "MediTrust Supply Chain Management System with Real Blockchain Settlement",
+  "main": "multichain-backend-real.js",
+  "scripts": {
+    "start": "node multichain-backend-real.js",
+    "dev": "nodemon multichain-backend-real.js",
+    "test": "npx hardhat test",
+    "test:supply-chain": "npx hardhat test test/MedicineRegistry.test.js",
+    "compile": "npx hardhat compile",
+    "clean": "npx hardhat clean",
+    "node": "npx hardhat node",
+    "deploy:local": "npx hardhat run scripts/deploy.js --network localhost",
+    "deploy:polygon": "NETWORK=polygon npx hardhat run scripts/deploy.js --network polygon",
+    "deploy:polygon-testnet": "NETWORK=polygonAmoy npx hardhat run scripts/deploy.js --network polygonAmoy",
+    "deploy:base": "NETWORK=base npx hardhat run scripts/deploy.js --network base",
+    "deploy:base-testnet": "NETWORK=baseSepolia npx hardhat run scripts/deploy.js --network baseSepolia",
+    "deploy:arbitrum": "NETWORK=arbitrum npx hardhat run scripts/deploy.js --network arbitrum",
+    "deploy:arbitrum-testnet": "NETWORK=arbitrumSepolia npx hardhat run scripts/deploy.js --network arbitrumSepolia",
+    "verify:polygon": "npx hardhat verify --network polygon",
+    "verify:base": "npx hardhat verify --network base",
+    "verify:arbitrum": "npx hardhat verify --network arbitrum",
+    "frontend": "cd frontend && npm run dev",
+    "build-frontend": "cd frontend && npm run build",
+    "setup:complete": "npm run compile && npm run deploy:polygon-testnet && npm run deploy:base-testnet && npm run deploy:arbitrum-testnet"
+  },
+  "dependencies": {
+    "@erc7824/nitrolite": "latest",
+    "ethers": "^5.7.2",
+    "ws": "^8.14.2",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "axios": "^1.6.2",
+    "qrcode": "^1.5.3",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^2.0.2",
+    "@nomiclabs/hardhat-ethers": "^2.2.3",
+    "@openzeppelin/contracts": "^5.0.0",
+    "hardhat": "^2.19.0",
+    "nodemon": "^3.0.1",
+    "@typechain/hardhat": "^6.1.6",
+    "@typechain/ethers-v5": "^10.2.1",
+    "@nomiclabs/hardhat-etherscan": "^3.1.7",
+    "chai": "^4.3.7",
+    "hardhat-gas-reporter": "^1.0.9",
+    "solidity-coverage": "^0.8.5"
+  },
+  "overrides": {
+    "@nomicfoundation/hardhat-ethers": "npm:@nomiclabs/hardhat-ethers@^2.2.3"
+  },
+  "keywords": [
+    "blockchain",
+    "supply-chain",
+    "medicine-tracking",
+    "state-channels",
+    "nitrolite",
+    "ethereum",
+    "polygon",
+    "base",
+    "arbitrum",
+    "smart-contracts",
+    "tamper-proof",
+    "qr-code"
+  ],
+  "author": "MediTrust Team",
+  "license": "MIT"
+}
