@@ -1,23 +1,40 @@
-// MediTrust - Supply Chain Management Dashboard
-// Complete medicine tracking from manufacturer to customer
+// MediTrust Production Frontend
+// Configured for deployment on Render.com
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import './App.css';
 
-// Chain configurations
+// Production API URL configuration
+const API_URL = import.meta.env.VITE_API_URL || 
+  (window.location.hostname === 'localhost' 
+    ? 'http://localhost:5000' 
+    : 'https://meditrust-complete.onrender.com');
+
+// Chain configurations for production
 const CHAINS = {
-  localhost: {
-    chainId: '0x7a69',
-    chainName: 'Local Hardhat',
+  polygonAmoy: {
+    chainId: '0x13882', // 80002 in hex
+    chainName: 'Polygon Amoy Testnet',
+    nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
+    rpcUrls: ['https://rpc-amoy.polygon.technology'],
+    blockExplorerUrls: ['https://amoy.polygonscan.com'],
+    icon: '🟣',
+    color: '#8247E5',
+    gradient: 'linear-gradient(135deg, #8247E5 0%, #A473EE 100%)'
+  },
+  baseSepolia: {
+    chainId: '0x14a34', // 84532 in hex
+    chainName: 'Base Sepolia Testnet',
     nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
-    rpcUrls: ['http://127.0.0.1:8545'],
-    icon: '🏠',
-    color: '#4A5568',
-    gradient: 'linear-gradient(135deg, #4A5568 0%, #718096 100%)'
+    rpcUrls: ['https://sepolia.base.org'],
+    blockExplorerUrls: ['https://sepolia.basescan.org'],
+    icon: '🔵',
+    color: '#0052FF',
+    gradient: 'linear-gradient(135deg, #0052FF 0%, #4D8FFF 100%)'
   },
   polygon: {
-    chainId: '0x89',
-    chainName: 'Polygon',
+    chainId: '0x89', // 137 in hex
+    chainName: 'Polygon Mainnet',
     nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
     rpcUrls: ['https://polygon-rpc.com'],
     blockExplorerUrls: ['https://polygonscan.com'],
@@ -26,24 +43,14 @@ const CHAINS = {
     gradient: 'linear-gradient(135deg, #8247E5 0%, #A473EE 100%)'
   },
   base: {
-    chainId: '0x2105',
-    chainName: 'Base',
+    chainId: '0x2105', // 8453 in hex
+    chainName: 'Base Mainnet',
     nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
     rpcUrls: ['https://mainnet.base.org'],
     blockExplorerUrls: ['https://basescan.org'],
     icon: '🔵',
     color: '#0052FF',
     gradient: 'linear-gradient(135deg, #0052FF 0%, #4D8FFF 100%)'
-  },
-  arbitrum: {
-    chainId: '0xa4b1',
-    chainName: 'Arbitrum',
-    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-    rpcUrls: ['https://arb1.arbitrum.io/rpc'],
-    blockExplorerUrls: ['https://arbiscan.io'],
-    icon: '🔷',
-    color: '#28A0F0',
-    gradient: 'linear-gradient(135deg, #28A0F0 0%, #5CB8F5 100%)'
   }
 };
 
@@ -56,13 +63,11 @@ const SUPPLY_CHAIN_ROLES = {
   RETAILER: { label: 'Retailer', icon: '🏬', color: '#EC4899' }
 };
 
-const API_URL = 'http://localhost:5000';
-
 function App() {
   // State management
   const [connected, setConnected] = useState(false);
   const [account, setAccount] = useState('');
-  const [selectedChain, setSelectedChain] = useState('localhost');
+  const [selectedChain, setSelectedChain] = useState('polygonAmoy');
   const [activeTab, setActiveTab] = useState('register');
   const [loading, setLoading] = useState(false);
   const [systemStatus, setSystemStatus] = useState({
@@ -87,26 +92,46 @@ function App() {
   const [verifyBatchId, setVerifyBatchId] = useState('');
   const [verificationResult, setVerificationResult] = useState(null);
   const [batchDetails, setBatchDetails] = useState(null);
+  const [privateKeyForVerification, setPrivateKeyForVerification] = useState('');
 
   // Customer claim state
   const [claimBatchId, setClaimBatchId] = useState('');
   const [claimResult, setClaimResult] = useState(null);
+  const [privateKeyForClaim, setPrivateKeyForClaim] = useState('');
 
   // Fetch system status
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const response = await fetch(`${API_URL}/health`);
+        const response = await fetch(`${API_URL}/api/health`);
         const data = await response.json();
         setSystemStatus(data);
       } catch (error) {
         console.error('Failed to fetch status:', error);
+        setSystemStatus(prev => ({ ...prev, clearNode: 'error' }));
       }
     };
 
     fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
+    const interval = setInterval(fetchStatus, 10000); // Check every 10 seconds
     return () => clearInterval(interval);
+  }, []);
+
+  // Check URL parameters for batch ID (for QR code scanning)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const batchFromUrl = urlParams.get('batch');
+    const actionFromUrl = urlParams.get('action');
+    
+    if (batchFromUrl) {
+      if (actionFromUrl === 'verify') {
+        setVerifyBatchId(batchFromUrl);
+        setActiveTab('verify');
+      } else if (actionFromUrl === 'claim') {
+        setClaimBatchId(batchFromUrl);
+        setActiveTab('claim');
+      }
+    }
   }, []);
 
   // Notification system
@@ -136,7 +161,6 @@ function App() {
             params: [{ chainId: CHAINS[selectedChain].chainId }],
           });
         } catch (switchError) {
-          // Chain doesn't exist, add it
           if (switchError.code === 4902) {
             await window.ethereum.request({
               method: 'wallet_addEthereumChain',
@@ -145,10 +169,11 @@ function App() {
           }
         }
       } catch (error) {
-        notify('Failed to connect wallet', 'error');
+        notify('Failed to connect wallet: ' + error.message, 'error');
       }
     } else {
-      notify('Please install MetaMask', 'warning');
+      notify('Please install MetaMask to use this application', 'warning');
+      window.open('https://metamask.io/download/', '_blank');
     }
   };
 
@@ -169,16 +194,15 @@ function App() {
     setParticipants(updated);
   };
 
-  // Register batch with supply chain
+  // Register batch
   const handleRegister = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // Validate participants
-      const validParticipants = participants.filter(p => p.address);
+      const validParticipants = participants.filter(p => p.address && ethers.utils.isAddress(p.address));
       if (validParticipants.length === 0) {
-        notify('Please add at least one supply chain participant', 'error');
+        notify('Please add at least one valid participant address', 'error');
         setLoading(false);
         return;
       }
@@ -201,7 +225,7 @@ function App() {
       if (result.success) {
         setQrCode(result.qrCode);
         setRegistrationResult(result);
-        notify(`Batch registered with ${result.participants} participants`, 'success');
+        notify(`Batch registered successfully! ${result.participants} participants added`, 'success');
         
         // Reset form
         setBatchId('');
@@ -219,18 +243,27 @@ function App() {
     }
   };
 
-  // Supply chain verification
+  // Supply chain verification (with private key for production)
   const handleSupplyChainVerify = async () => {
+    if (!privateKeyForVerification) {
+      notify('Please enter your private key to sign the verification', 'error');
+      return;
+    }
+
     setLoading(true);
     try {
+      const wallet = new ethers.Wallet(privateKeyForVerification);
+      const verifierAddress = wallet.address;
+
       const response = await fetch(`${API_URL}/api/verify/supply-chain/${selectedChain}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           batchId: verifyBatchId,
-          verifier: account,
-          location: 'GPS: 40.7128, -74.0060', // Example location
-          additionalData: 'Temperature: 2-8°C, Humidity: 45%'
+          verifier: verifierAddress,
+          privateKey: privateKeyForVerification,
+          location: `GPS: ${navigator.geolocation ? 'Available' : 'Not available'}`,
+          additionalData: `Verified at ${new Date().toLocaleString()}`
         })
       });
 
@@ -240,7 +273,10 @@ function App() {
         setVerificationResult(result);
         notify(`Verification successful! Progress: ${result.progress}`, 'success');
         
-        // Fetch updated batch details
+        if (result.explorer) {
+          window.open(result.explorer, '_blank');
+        }
+        
         await fetchBatchDetails(verifyBatchId);
       } else {
         notify(result.error || 'Verification failed', 'error');
@@ -249,19 +285,29 @@ function App() {
       notify('Verification failed: ' + error.message, 'error');
     } finally {
       setLoading(false);
+      setPrivateKeyForVerification(''); // Clear private key after use
     }
   };
 
-  // Customer claim reward
+  // Customer claim reward (with private key for production)
   const handleCustomerClaim = async () => {
+    if (!privateKeyForClaim) {
+      notify('Please enter your private key to claim the reward', 'error');
+      return;
+    }
+
     setLoading(true);
     try {
+      const wallet = new ethers.Wallet(privateKeyForClaim);
+      const customerAddress = wallet.address;
+
       const response = await fetch(`${API_URL}/api/claim/${selectedChain}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           batchId: claimBatchId,
-          customer: account
+          customer: customerAddress,
+          privateKey: privateKeyForClaim
         })
       });
 
@@ -269,7 +315,11 @@ function App() {
       
       if (result.success) {
         setClaimResult(result);
-        notify(`🎉 Reward claimed! You received ${result.reward}`, 'success');
+        notify(`🎉 Congratulations! You received ${result.reward}`, 'success');
+        
+        if (result.explorer) {
+          window.open(result.explorer, '_blank');
+        }
       } else {
         notify(result.error || 'Claim failed', 'error');
       }
@@ -277,6 +327,7 @@ function App() {
       notify('Claim failed: ' + error.message, 'error');
     } finally {
       setLoading(false);
+      setPrivateKeyForClaim(''); // Clear private key after use
     }
   };
 
@@ -288,6 +339,7 @@ function App() {
       setBatchDetails(data);
     } catch (error) {
       console.error('Failed to fetch batch details:', error);
+      notify('Failed to load batch details', 'error');
     }
   };
 
@@ -308,6 +360,40 @@ function App() {
       setLoading(false);
     }
   };
+
+  // Download QR Code
+  const downloadQRCode = () => {
+    const link = document.createElement('a');
+    link.download = `meditrust-batch-${registrationResult?.batchId}.png`;
+    link.href = qrCode;
+    link.click();
+  };
+
+  // Share batch link
+  const shareBatchLink = (batchId, action) => {
+    const url = `${window.location.origin}?batch=${batchId}&action=${action}`;
+    if (navigator.share) {
+      navigator.share({
+        title: 'MediTrust Batch Verification',
+        text: `Verify medicine batch ${batchId}`,
+        url: url
+      });
+    } else {
+      navigator.clipboard.writeText(url);
+      notify('Link copied to clipboard!', 'success');
+    }
+  };
+
+  // Import ethers for address validation
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js';
+    script.async = true;
+    document.body.appendChild(script);
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
 
   return (
     <div className="app-container">
@@ -343,18 +429,18 @@ function App() {
             </div>
             <div className="brand-text">
               <h1>MediTrust</h1>
-              <span className="brand-subtitle">Supply Chain Management System</span>
+              <span className="brand-subtitle">Blockchain Supply Chain Verification</span>
             </div>
           </div>
 
           <div className="header-status">
             <div className={`status-indicator ${systemStatus.clearNode === 'connected' ? 'connected' : ''}`}>
               <span className="status-dot"></span>
-              <span>ClearNode</span>
+              <span>Network</span>
             </div>
             <div className="status-indicator">
-              <span className="status-icon">📦</span>
-              <span>{systemStatus.activeChannels || 0} Channels</span>
+              <span className="status-icon">🌐</span>
+              <span>{systemStatus.environment || 'Production'}</span>
             </div>
           </div>
 
@@ -371,7 +457,7 @@ function App() {
             ) : (
               <button className="connect-button" onClick={connectWallet}>
                 <span className="button-icon">🔗</span>
-                Connect Wallet
+                Connect MetaMask
               </button>
             )}
           </div>
@@ -419,14 +505,14 @@ function App() {
               onClick={() => setActiveTab('verify')}
             >
               <span className="tab-icon">✅</span>
-              Supply Chain Verify
+              Verify Transfer
             </button>
             <button
               className={`tab-button ${activeTab === 'claim' ? 'active' : ''}`}
               onClick={() => setActiveTab('claim')}
             >
               <span className="tab-icon">🎁</span>
-              Customer Claim
+              Claim Reward
             </button>
             <button
               className={`tab-button ${activeTab === 'track' ? 'active' : ''}`}
@@ -530,7 +616,7 @@ function App() {
                     </button>
                   </div>
 
-                  <button type="submit" className="submit-button" disabled={loading}>
+                  <button type="submit" className="submit-button" disabled={loading || !connected}>
                     {loading ? (
                       <span className="loading-spinner">⟳</span>
                     ) : (
@@ -542,15 +628,32 @@ function App() {
                   </button>
                 </form>
 
-                {qrCode && (
+                {qrCode && registrationResult && (
                   <div className="qr-result">
                     <h3>Registration Successful!</h3>
                     <img src={qrCode} alt="QR Code" className="qr-code" />
-                    <p className="qr-info">
-                      Batch ID: {registrationResult?.batchId}<br/>
-                      Participants: {registrationResult?.participants}<br/>
-                      Status: {registrationResult?.status}
-                    </p>
+                    <div className="qr-info">
+                      <p><strong>Batch ID:</strong> {registrationResult.batchId}</p>
+                      <p><strong>Chain:</strong> {registrationResult.chain}</p>
+                      <p><strong>Participants:</strong> {registrationResult.participants}</p>
+                      <p><strong>Status:</strong> {registrationResult.status}</p>
+                      {registrationResult.transactionHash && (
+                        <p>
+                          <strong>Transaction:</strong>{' '}
+                          <a href={registrationResult.explorer} target="_blank" rel="noopener noreferrer">
+                            View on Explorer →
+                          </a>
+                        </p>
+                      )}
+                    </div>
+                    <div className="qr-actions">
+                      <button onClick={downloadQRCode} className="secondary-button">
+                        📥 Download QR Code
+                      </button>
+                      <button onClick={() => shareBatchLink(registrationResult.batchId, 'verify')} className="secondary-button">
+                        📤 Share Link
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -570,12 +673,24 @@ function App() {
                       placeholder="Enter batch ID to verify"
                     />
                   </div>
+                  <div className="form-group">
+                    <label>Your Private Key (Required for Signature)</label>
+                    <input
+                      type="password"
+                      value={privateKeyForVerification}
+                      onChange={(e) => setPrivateKeyForVerification(e.target.value)}
+                      placeholder="Enter your private key (will not be stored)"
+                    />
+                    <small className="form-hint">
+                      ⚠️ Your private key is used to sign the transaction and is not stored
+                    </small>
+                  </div>
                   <div className="button-group">
                     <button onClick={checkBatchStatus} className="secondary-button">
                       <span className="button-icon">🔍</span>
                       Check Status
                     </button>
-                    <button onClick={handleSupplyChainVerify} className="primary-button" disabled={loading || !connected}>
+                    <button onClick={handleSupplyChainVerify} className="primary-button" disabled={loading || !verifyBatchId || !privateKeyForVerification}>
                       <span className="button-icon">✅</span>
                       Verify Transfer
                     </button>
@@ -586,10 +701,16 @@ function App() {
                   <div className="verification-result">
                     <h3>Verification Complete</h3>
                     <div className="result-details">
-                      <p><strong>Role:</strong> {verificationResult.role}</p>
                       <p><strong>Progress:</strong> {verificationResult.progress}</p>
                       <p><strong>Ready for Customer:</strong> {verificationResult.readyForCustomer ? 'Yes ✅' : 'No ❌'}</p>
-                      <p><strong>Transaction:</strong> {verificationResult.transactionHash?.substring(0, 10)}...</p>
+                      {verificationResult.transactionHash && (
+                        <p>
+                          <strong>Transaction:</strong>{' '}
+                          <a href={verificationResult.explorer} target="_blank" rel="noopener noreferrer">
+                            View on Explorer →
+                          </a>
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -616,10 +737,8 @@ function App() {
                             {p.hasVerified && <span className="verified-badge">✅ Verified</span>}
                           </div>
                           <p className="participant-address">{p.address}</p>
-                          {p.hasVerified && (
+                          {p.hasVerified && p.verifiedAt > 0 && (
                             <div className="verification-info">
-                              <p><strong>Location:</strong> {p.location}</p>
-                              <p><strong>Data:</strong> {p.additionalData}</p>
                               <p><strong>Time:</strong> {new Date(p.verifiedAt * 1000).toLocaleString()}</p>
                             </div>
                           )}
@@ -645,7 +764,19 @@ function App() {
                       placeholder="Scan or enter batch ID"
                     />
                   </div>
-                  <button onClick={handleCustomerClaim} className="claim-button" disabled={loading || !connected}>
+                  <div className="form-group">
+                    <label>Your Private Key (Required for Claiming)</label>
+                    <input
+                      type="password"
+                      value={privateKeyForClaim}
+                      onChange={(e) => setPrivateKeyForClaim(e.target.value)}
+                      placeholder="Enter your private key (will not be stored)"
+                    />
+                    <small className="form-hint">
+                      ⚠️ Your private key is used to claim rewards and is not stored
+                    </small>
+                  </div>
+                  <button onClick={handleCustomerClaim} className="claim-button" disabled={loading || !claimBatchId || !privateKeyForClaim}>
                     {loading ? (
                       <span className="loading-spinner">⟳</span>
                     ) : (
@@ -663,7 +794,14 @@ function App() {
                     <p>You have successfully claimed your reward!</p>
                     <div className="reward-details">
                       <p><strong>Reward:</strong> {claimResult.reward}</p>
-                      <p><strong>Transaction:</strong> {claimResult.transactionHash?.substring(0, 20)}...</p>
+                      {claimResult.transactionHash && (
+                        <p>
+                          <strong>Transaction:</strong>{' '}
+                          <a href={claimResult.explorer} target="_blank" rel="noopener noreferrer">
+                            View on Explorer →
+                          </a>
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -693,6 +831,12 @@ function App() {
                 {batchDetails && (
                   <div className="tracking-timeline">
                     <h3>Supply Chain Journey</h3>
+                    <div className="batch-info">
+                      <p><strong>Drug:</strong> {batchDetails.drugName}</p>
+                      <p><strong>Ingredients:</strong> {batchDetails.ingredients}</p>
+                      <p><strong>Expiry:</strong> {new Date(batchDetails.expiryDate * 1000).toLocaleDateString()}</p>
+                      <p><strong>Registered:</strong> {new Date(batchDetails.registeredAt * 1000).toLocaleString()}</p>
+                    </div>
                     <div className="timeline">
                       <div className="timeline-item">
                         <div className="timeline-marker completed">📝</div>
@@ -711,7 +855,7 @@ function App() {
                             <h4>{SUPPLY_CHAIN_ROLES[p.role]?.label}</h4>
                             {p.hasVerified ? (
                               <>
-                                <p>✅ Verified at {p.location}</p>
+                                <p>✅ Verified</p>
                                 <p>{new Date(p.verifiedAt * 1000).toLocaleString()}</p>
                               </>
                             ) : (
@@ -729,7 +873,7 @@ function App() {
                           {batchDetails.supplyChain.rewardClaimed ? (
                             <>
                               <p>✅ Delivered to customer</p>
-                              <p>Reward claimed by: {batchDetails.supplyChain.rewardClaimedBy}</p>
+                              <p>Reward claimed by: {batchDetails.supplyChain.rewardClaimedBy.substring(0, 10)}...</p>
                             </>
                           ) : batchDetails.supplyChain.readyForCustomer ? (
                             <p>✅ Ready for customer claim</p>
@@ -739,6 +883,13 @@ function App() {
                         </div>
                       </div>
                     </div>
+                    {batchDetails.explorer && (
+                      <div className="explorer-link">
+                        <a href={batchDetails.explorer} target="_blank" rel="noopener noreferrer" className="primary-button">
+                          View Contract on Explorer →
+                        </a>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -746,6 +897,14 @@ function App() {
           </div>
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="app-footer">
+        <div className="footer-content">
+          <p>© 2024 MediTrust - Securing pharmaceutical supply chains with blockchain</p>
+          <p>Deployed on: {systemStatus.chains && Object.keys(systemStatus.chains).filter(key => systemStatus.chains[key].contractsDeployed).join(', ')}</p>
+        </div>
+      </footer>
     </div>
   );
 }
